@@ -1,0 +1,108 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:13
+    container_name: postgres
+    environment:
+      POSTGRES_USER: username
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: final
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: final
+      MYSQL_USER: username
+      MYSQL_PASSWORD: password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.2.1
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.2.1
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+  airflow-webserver:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: my_custom_airflow:latest
+    container_name: airflow-webserver
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://username:password@postgres:5432/final
+      AIRFLOW__CORE__FERNET_KEY: 'prK4fUyohfzXpecjjbz4nldmFVfWcUXVW3SxvRkPu-A='
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'false'
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'true'
+      # PYTHONPATH укажем, если действительно нужно:
+      PYTHONPATH: /home/airflow/.local/lib/python3.7/site-packages
+    volumes:
+      - C:\Users\UserPC\PycharmProjects\pythonFinal\airflow\dags:/opt/airflow/dags
+      - C:\Users\UserPC\PycharmProjects\pythonFinal\airflow\logs:/opt/airflow/logs
+      - C:\Users\UserPC\PycharmProjects\pythonFinal\airflow\plugins:/opt/airflow/plugins
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+      - mysql
+      - kafka
+      - airflow-scheduler
+    command: >
+      bash -c "
+      airflow webserver
+      "
+
+  airflow-scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: my_custom_airflow:latest
+    container_name: airflow-scheduler
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://username:password@postgres:5432/final
+      AIRFLOW__CORE__FERNET_KEY: 'prK4fUyohfzXpecjjbz4nldmFVfWcUXVW3SxvRkPu-A='
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'false'
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'true'
+    volumes:
+      - C:\Users\UserPC\PycharmProjects\pythonFinal\airflow\dags:/opt/airflow/dags
+      - C:\Users\UserPC\PycharmProjects\pythonFinal\airflow\logs:/opt/airflow/logs
+      - C:\Users\UserPC\PycharmProjects\pythonFinal\airflow\plugins:/opt/airflow/plugins
+    depends_on:
+      - postgres
+      - mysql
+    command: >
+      bash -c "
+      airflow scheduler
+      "
+
+volumes:
+  postgres_data:
+  mysql_data:
