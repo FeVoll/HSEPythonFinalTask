@@ -1,9 +1,11 @@
 from airflow import DAG
 from airflow.operators.python import PythonOperator
+from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.providers.mysql.hooks.mysql import MySqlHook
 from datetime import datetime
+import pandas as pd
 
-# Дефолтные аргументы DAG
+
 default_args = {
     'owner': 'airflow',
     'depends_on_past': False,
@@ -12,21 +14,20 @@ default_args = {
     'retries': 0,
 }
 
-# Инициализация DAG
 with DAG(
         'replicate_postgres_to_mysql',
         default_args=default_args,
-        description='Replicate data from PostgreSQL to MySQL with table creation',
+        description='Replicate data from PostgreSQL to MySQL',
         schedule_interval=None,
         start_date=datetime(2025, 1, 1),
         catchup=False,
 ) as dag:
 
     def create_mysql_table(mysql_conn_id, table_name):
-        """Создание таблицы в MySQL, если она не существует"""
+        #Создание таблицы в MySQL, если она не существует
         mysql_hook = MySqlHook(mysql_conn_id)
 
-        # Определение схемы таблиц
+
         table_schemas = {
             'Users': """
                 CREATE TABLE IF NOT EXISTS Users (
@@ -79,7 +80,6 @@ with DAG(
             """,
         }
 
-        # Выполнение SQL-запроса для создания таблицы
         create_table_sql = table_schemas.get(table_name)
         if create_table_sql:
             mysql_hook.run(create_table_sql)
@@ -94,20 +94,17 @@ with DAG(
         postgres_hook = PostgresHook(postgres_conn_id)
         mysql_hook = MySqlHook(mysql_conn_id)
 
-        # (Создание таблицы, если нужно)
         create_mysql_table(mysql_conn_id, table_name)
 
-        # Считываем таблицу из PostgreSQL
         sql = f"SELECT * FROM {table_name};"
         records = postgres_hook.get_pandas_df(sql)
         print(f"Извлеченные данные из таблицы {table_name}:")
         print(records.head())
 
-        # Обходим все столбцы и аккуратно заменяем пропуски
         for col in records.columns:
             # Для строковых полей
             if records[col].dtype.kind in {'O', 'U', 'S'}:
-                # Пусть пропуски станут пустыми строками (можно и None, если хотите NULL)
+                # Пусть пропуски станут пустыми строками
                 records[col] = records[col].fillna('')
 
             # Для числовых (включая int, float, unsigned)
@@ -129,7 +126,7 @@ with DAG(
         try:
             mysql_hook.insert_rows(
                 table=table_name,
-                rows=records.values.tolist(),  # Данные в виде списка списков
+                rows=records.values.tolist(),
                 target_fields=records.columns.tolist()
             )
             print(f"Таблица {table_name} успешно реплицирована!")
